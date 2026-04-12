@@ -1,0 +1,219 @@
+# GSE282214
+setwd("/home/xxm_xxm/CJX_workspace/Dataset/GSE282214/")
+rm(list = ls())
+options(stringsAsFactors = FALSE)
+
+library(readxl)
+library(limma)
+
+# ==============================
+# 1. Read TPM table
+# ==============================
+data <- read_excel("GSE282214_A375_24h_TPM.xlsx")
+data <- as.data.frame(data)
+
+cat("===== Raw table dimension =====\n")
+print(dim(data))
+cat("===== Column names =====\n")
+print(colnames(data))
+
+# ==============================
+# 2. Extract expression matrix
+# columns 2:7 = expression
+# first 3 = 24h, last 3 = 0h
+# ==============================
+dat <- data[, 2:7, drop = FALSE]
+dat <- as.matrix(dat)
+mode(dat) <- "numeric"
+rownames(dat) <- data$gene_name
+
+cat("===== Selected samples =====\n")
+print(colnames(dat))
+
+cat("===== Raw TPM range =====\n")
+print(range(dat, na.rm = TRUE))
+
+cat("===== Raw TPM quantiles =====\n")
+print(quantile(
+  dat,
+  probs = c(0, 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99, 1),
+  na.rm = TRUE
+))
+
+sample_summary_raw <- data.frame(
+  Sample = colnames(dat),
+  Min = apply(dat, 2, min, na.rm = TRUE),
+  Q1 = apply(dat, 2, quantile, probs = 0.25, na.rm = TRUE),
+  Median = apply(dat, 2, median, na.rm = TRUE),
+  Mean = apply(dat, 2, mean, na.rm = TRUE),
+  Q3 = apply(dat, 2, quantile, probs = 0.75, na.rm = TRUE),
+  Max = apply(dat, 2, max, na.rm = TRUE)
+)
+
+write.csv(sample_summary_raw, "GSE282214_sample_summary_rawTPM.csv", row.names = FALSE)
+
+# ==============================
+# 3. Optional: remove obvious structural RNAs
+# Uncomment if needed
+# dat <- dat[!grepl("rRNA|5S_rRNA|5_8S_rRNA", rownames(dat), ignore.case = TRUE), , drop = FALSE]
+# ==============================
+
+# ==============================
+# 4. Filter low-expression genes
+# TPM > 1 in at least 3 samples
+# ==============================
+keep <- rowSums(dat > 1, na.rm = TRUE) >= 3
+dat_filt <- dat[keep, , drop = FALSE]
+
+cat("===== Filtering summary =====\n")
+cat("Genes before filtering:", nrow(dat), "\n")
+cat("Genes after filtering:", nrow(dat_filt), "\n")
+
+# ==============================
+# 5. Log2 transform
+# ==============================
+exp_matrix <- log2(dat_filt + 1)
+
+cat("===== log2(TPM+1) range =====\n")
+print(range(exp_matrix, na.rm = TRUE))
+
+cat("===== log2(TPM+1) quantiles =====\n")
+print(quantile(
+  exp_matrix,
+  probs = c(0, 0.01, 0.05, 0.25, 0.5, 0.75, 0.95, 0.99, 1),
+  na.rm = TRUE
+))
+
+sample_summary_log <- data.frame(
+  Sample = colnames(exp_matrix),
+  Min = apply(exp_matrix, 2, min, na.rm = TRUE),
+  Q1 = apply(exp_matrix, 2, quantile, probs = 0.25, na.rm = TRUE),
+  Median = apply(exp_matrix, 2, median, na.rm = TRUE),
+  Mean = apply(exp_matrix, 2, mean, na.rm = TRUE),
+  Q3 = apply(exp_matrix, 2, quantile, probs = 0.75, na.rm = TRUE),
+  Max = apply(exp_matrix, 2, max, na.rm = TRUE)
+)
+
+write.csv(sample_summary_log, "GSE282214_sample_summary_logTPM.csv", row.names = FALSE)
+
+pdf("GSE282214_boxplot_logTPM_used_for_DEG.pdf", width = 10, height = 6)
+boxplot(
+  exp_matrix,
+  las = 2,
+  outline = FALSE,
+  main = "GSE282214 log2(TPM+1) used for DEG"
+)
+dev.off()
+
+pdf("GSE282214_density_logTPM_used_for_DEG.pdf", width = 10, height = 6)
+plotDensities(
+  exp_matrix,
+  main = "GSE282214 density plot"
+)
+dev.off()
+
+# remove zero-variance genes
+gene_var <- apply(exp_matrix, 1, var, na.rm = TRUE)
+exp_matrix <- exp_matrix[gene_var > 0, , drop = FALSE]
+
+write.table(
+  data.frame(
+    Dataset = "GSE282214",
+    InputType = "processed TPM matrix",
+    ReNormalization = "No",
+    Filtering = "TPM > 1 in at least 3 samples",
+    Transformation = "log2(TPM + 1)",
+    DEGmethod = "limma",
+    Note = "Exploratory DEG analysis based on processed TPM"
+  ),
+  file = "GSE282214_processing_decision.txt",
+  sep = "\t",
+  row.names = FALSE,
+  quote = FALSE
+)
+
+# ==============================
+# 6. DEG analysis
+# first 3 = BMH21 (24h), last 3 = CONTROL (0h)
+# ==============================
+group <- factor(
+  c(rep("BMH21", 3), rep("CONTROL", 3)),
+  levels = c("CONTROL", "BMH21")
+)
+
+design <- model.matrix(~0 + group)
+colnames(design) <- levels(group)
+
+cat("===== Design matrix =====\n")
+print(design)
+
+fit <- lmFit(exp_matrix, design)
+
+contrast_matrix <- makeContrasts(
+  BMH21_vs_CONTROL = BMH21 - CONTROL,
+  levels = design
+)
+
+fit2 <- contrasts.fit(fit, contrast_matrix)
+fit2 <- eBayes(fit2)
+
+all_diff <- topTable(
+  fit2,
+  coef = "BMH21_vs_CONTROL",
+  adjust.method = "fdr",
+  number = Inf,
+  sort.by = "P"
+)
+
+all_diff$GeneSymbol <- rownames(all_diff)
+all_diff <- all_diff[, c("GeneSymbol", setdiff(colnames(all_diff), "GeneSymbol"))]
+
+# strict: FDR
+diffSig_fdr <- subset(all_diff, abs(logFC) > 1 & adj.P.Val < 0.05)
+up_fdr <- subset(all_diff, logFC > 1 & adj.P.Val < 0.05)
+down_fdr <- subset(all_diff, logFC < -1 & adj.P.Val < 0.05)
+
+# exploratory: nominal P
+diffSig_p <- subset(all_diff, abs(logFC) > 1 & P.Value < 0.05)
+up_p <- subset(all_diff, logFC > 1 & P.Value < 0.05)
+down_p <- subset(all_diff, logFC < -1 & P.Value < 0.05)
+
+cat("===== DEG summary =====\n")
+cat("Total genes tested:", nrow(all_diff), "\n")
+
+cat("FDR significant DEGs (|logFC| > 1 & adj.P.Val < 0.05):", nrow(diffSig_fdr), "\n")
+cat("FDR upregulated genes:", nrow(up_fdr), "\n")
+cat("FDR downregulated genes:", nrow(down_fdr), "\n")
+
+cat("Nominal significant DEGs (|logFC| > 1 & P.Value < 0.05):", nrow(diffSig_p), "\n")
+cat("Nominal upregulated genes:", nrow(up_p), "\n")
+cat("Nominal downregulated genes:", nrow(down_p), "\n")
+
+write.csv(all_diff, "GSE282214_all_DEG.csv", row.names = FALSE)
+
+write.csv(diffSig_fdr, "GSE282214_sig_DEG_FDR.csv", row.names = FALSE)
+write.csv(up_fdr, "GSE282214_up_DEG_FDR.csv", row.names = FALSE)
+write.csv(down_fdr, "GSE282214_down_DEG_FDR.csv", row.names = FALSE)
+
+write.csv(diffSig_p, "GSE282214_sig_DEG_Pvalue.csv", row.names = FALSE)
+write.csv(up_p, "GSE282214_up_DEG_Pvalue.csv", row.names = FALSE)
+write.csv(down_p, "GSE282214_down_DEG_Pvalue.csv", row.names = FALSE)
+
+save(
+  data, dat, dat_filt, exp_matrix,
+  sample_summary_raw, sample_summary_log,
+  all_diff,
+  diffSig_fdr, up_fdr, down_fdr,
+  diffSig_p, up_p, down_p,
+  file = "GSE282214_analysis_workspace.Rdata"
+)
+
+
+up_genes <- unique(na.omit(up_fdr$GeneSymbol))
+down_genes <- unique(na.omit(down_fdr$GeneSymbol))
+gene_list_long <- data.frame(
+  dataset = c(rep("GSE282214", length(up_genes)), rep("GSE282214", length(down_genes))),
+  group = c(rep("UP", length(up_genes)), rep("DOWN", length(down_genes))),
+  gene_symbol = c(up_genes, down_genes)
+)
+write.csv(gene_list_long, "GSE282214_diffgenesymbol_long.csv", row.names = FALSE)
