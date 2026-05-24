@@ -1,4 +1,49 @@
-.Rproj.user
+.Rproj.user/
 .Rhistory
 .RData
 .Ruserdata
+
+# R session and package artifacts
+*.RData
+*.Rhistory
+*.Rproj.user
+renv/library/
+packrat/lib*/
+
+# Large input/intermediate data
+*.rds
+*.Rds
+*.RDS
+*.Rdata
+*.RData
+*.gctx
+*.h5
+*.h5ad
+*.loom
+*.mtx
+*.tsv.gz
+*.csv.gz
+*.txt.gz
+*.tar
+*.tar.gz
+*.zip
+
+# Generated analysis outputs
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.html
+*.csv
+*.tsv
+plots/
+figures/
+tables/
+results/
+output/
+outputs/
+
+# OS files
+.DS_Store
+Thumbs.db
