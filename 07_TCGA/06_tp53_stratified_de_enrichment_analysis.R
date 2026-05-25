@@ -125,7 +125,7 @@ safe_spearman <- function(df, x, y, min_n = 10) {
       p_value = NA_real_
     ))
   }
-
+  
   ct <- suppressWarnings(cor.test(sub[[x]], sub[[y]], method = "spearman"))
   data.frame(
     n = nrow(sub),
@@ -159,15 +159,15 @@ plot_corr_scatter <- function(df, x, y, color = "#d95f02",
   ct <- suppressWarnings(cor.test(sub[[x]], sub[[y]], method = "spearman"))
   rho <- unname(ct$estimate)
   pval <- ct$p.value
-
+  
   label_txt <- paste0(
     "rho = ", round(rho, 2),
     "\nP ", format_p_label(pval)
   )
-
+  
   x_pos <- quantile(sub[[x]], 0.05, na.rm = TRUE)
   y_pos <- quantile(sub[[y]], 0.93, na.rm = TRUE)
-
+  
   ggplot(sub, aes_string(x = x, y = y)) +
     geom_point(size = point_size, alpha = alpha, color = color) +
     geom_smooth(method = "lm", se = FALSE, color = "black", linewidth = 0.8) +
@@ -185,14 +185,14 @@ plot_corr_scatter <- function(df, x, y, color = "#d95f02",
 run_go_bp <- function(gene_vec, out_csv, map_csv = NULL) {
   gene_vec <- unique(as.character(gene_vec))
   gene_vec <- gene_vec[!is.na(gene_vec) & gene_vec != ""]
-
+  
   if (length(gene_vec) == 0) {
     message("Input gene vector is empty.")
     return(NULL)
   }
-
+  
   gene_vec_clean <- sub("\\..*$", "", gene_vec)
-
+  
   entrez_df <- tryCatch({
     bitr(
       gene_vec_clean,
@@ -204,16 +204,16 @@ run_go_bp <- function(gene_vec, out_csv, map_csv = NULL) {
     message("ID conversion failed: ", e$message)
     return(NULL)
   })
-
+  
   if (is.null(entrez_df) || nrow(entrez_df) == 0) {
     message("No valid Ensembl IDs could be mapped for GO enrichment.")
     return(NULL)
   }
-
+  
   if (!is.null(map_csv)) {
     write.csv(entrez_df, map_csv, row.names = FALSE)
   }
-
+  
   ego <- enrichGO(
     gene = unique(entrez_df$ENTREZID),
     OrgDb = org.Hs.eg.db,
@@ -224,14 +224,14 @@ run_go_bp <- function(gene_vec, out_csv, map_csv = NULL) {
     qvalueCutoff = 0.2,
     readable = TRUE
   )
-
+  
   ego_df <- as.data.frame(ego)
   if (nrow(ego_df) > 0) {
     write.csv(ego_df, out_csv, row.names = FALSE)
   } else {
     message("GO enrichment returned no significant terms.")
   }
-
+  
   return(ego)
 }
 
@@ -249,12 +249,12 @@ make_volcano_plot <- function(de_df,
         TRUE ~ "NS"
       )
     )
-
+  
   label_df <- plot_df %>%
     dplyr::filter(sig_group != "NS") %>%
     dplyr::arrange(adj.P.Val) %>%
     dplyr::slice_head(n = n_label)
-
+  
   ggplot(plot_df, aes(x = logFC, y = neglog10FDR, color = sig_group)) +
     geom_point(alpha = 0.7, size = 1.2) +
     geom_vline(xintercept = c(-fc_cut, fc_cut), linetype = 2, linewidth = 0.5) +
@@ -382,13 +382,14 @@ save_pdf(p_corr_mut, "tp53_mut_correlation_NuStress_vs_RiboSis.pdf", width = 6, 
 msg("Step 5/10: Per-cancer correlations in TP53-mut tumors ...")
 
 save_csv(
-  tumor_mut %>% count(cancer_abbr, name = "n_mut") %>% arrange(desc(n_mut)),
+  tumor_mut %>%
+    dplyr::count(cancer_abbr, name = "n_mut") %>%
+    dplyr::arrange(dplyr::desc(n_mut)),
   "tp53_mut_sample_counts_by_cancer.csv"
 )
-
 mut_count_by_cancer <- tumor_mut %>%
-  count(cancer_abbr, name = "n_mut") %>%
-  filter(n_mut >= 20)
+  dplyr::count(cancer_abbr, name = "n_mut") %>%
+  dplyr::filter(n_mut >= 20)
 
 cancers_use <- mut_count_by_cancer$cancer_abbr
 
@@ -448,7 +449,8 @@ save_csv(mut_meta, "tp53_mut_meta.csv")
 saveRDS(mut_meta, file.path(rds_dir, "tp53_mut_meta.rds"))
 
 save_csv(
-  mut_meta %>% count(NuStress_group, name = "n"),
+  mut_meta %>%
+    dplyr::count(NuStress_group, name = "n"),
   "tp53_mut_NuStress_high_low_counts.csv"
 )
 
@@ -676,14 +678,14 @@ print(summary_df)
 run_kegg <- function(gene_vec, out_csv, map_csv = NULL) {
   gene_vec <- unique(as.character(gene_vec))
   gene_vec <- gene_vec[!is.na(gene_vec) & gene_vec != ""]
-
+  
   if (length(gene_vec) == 0) {
     message("Input gene vector is empty.")
     return(NULL)
   }
-
+  
   gene_vec_clean <- sub("\\..*$", "", gene_vec)
-
+  
   entrez_df <- tryCatch({
     bitr(
       gene_vec_clean,
@@ -695,16 +697,16 @@ run_kegg <- function(gene_vec, out_csv, map_csv = NULL) {
     message("ID conversion failed: ", e$message)
     return(NULL)
   })
-
+  
   if (is.null(entrez_df) || nrow(entrez_df) == 0) {
     message("No valid Ensembl IDs could be mapped for KEGG enrichment.")
     return(NULL)
   }
-
+  
   if (!is.null(map_csv)) {
     write.csv(entrez_df, map_csv, row.names = FALSE)
   }
-
+  
   ekegg <- enrichKEGG(
     gene         = unique(entrez_df$ENTREZID),
     organism     = "hsa",
@@ -712,16 +714,16 @@ run_kegg <- function(gene_vec, out_csv, map_csv = NULL) {
     pvalueCutoff  = 0.05,
     qvalueCutoff  = 0.2
   )
-
+  
   ekegg <- setReadable(ekegg, OrgDb = org.Hs.eg.db, keyType = "ENTREZID")
-
+  
   ekegg_df <- as.data.frame(ekegg)
   if (nrow(ekegg_df) > 0) {
     write.csv(ekegg_df, out_csv, row.names = FALSE)
   } else {
     message("KEGG enrichment returned no significant terms.")
   }
-
+  
   return(ekegg)
 }
 
@@ -764,7 +766,7 @@ if (!is.null(ekegg_up) && nrow(as.data.frame(ekegg_up)) > 0) {
   p_kegg_up <- dotplot(ekegg_up, showCategory = 15) +
     ggtitle("KEGG: up in TP53-mut / NuStress-high") +
     theme_pub()
-
+  
   save_pdf(p_kegg_up, "tp53_mut_KEGG_up_dotplot.pdf", width = 8, height = 6)
   save_png(p_kegg_up, "tp53_mut_KEGG_up_dotplot.png", width = 8, height = 6)
 }
@@ -773,7 +775,7 @@ if (!is.null(ekegg_down) && nrow(as.data.frame(ekegg_down)) > 0) {
   p_kegg_down <- dotplot(ekegg_down, showCategory = 15) +
     ggtitle("KEGG: down in TP53-mut / NuStress-high") +
     theme_pub()
-
+  
   save_pdf(p_kegg_down, "tp53_mut_KEGG_down_dotplot.pdf", width = 8, height = 6)
   save_png(p_kegg_down, "tp53_mut_KEGG_down_dotplot.png", width = 8, height = 6)
 }
