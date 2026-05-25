@@ -45,6 +45,18 @@ tissue_colors <- c(
   "Liver Metastasis" = "#8F2F6D"
 )
 
+cell_type_colors <- c(
+  "Fibroblast" = "#1f77b4",
+  "lamina propria" = "#ff7f0e",
+  "Normal Epithelium" = "#2ca02c",
+  "Tumor" = "#d62728",
+  "Subserosa" = "#9467bd",
+  "Smooth Muscle" = "#8491B4FF",
+  "Endothelial" = "#F39B7FFF",
+  "Hepatocytes" = "#00A087FF",
+  "Erythrocyte" = "#7A52A3"
+)
+
 # ======================================================================
 # 3. Utility functions
 # ======================================================================
@@ -186,6 +198,20 @@ save_wilcox_summary <- function(df, group_var, score_var, split_var = NULL, outf
   return(res)
 }
 
+get_cell_type_colors <- function(cell_types) {
+  cell_types <- unique(as.character(cell_types))
+  missing_types <- setdiff(cell_types, names(cell_type_colors))
+  plot_colors <- cell_type_colors
+
+  if (length(missing_types) > 0) {
+    default_colors <- colorRampPalette(RColorBrewer::brewer.pal(9, "Set1"))(length(missing_types))
+    names(default_colors) <- missing_types
+    plot_colors <- c(plot_colors, default_colors)
+  }
+
+  plot_colors[cell_types]
+}
+
 # ======================================================================
 # 4. Load all score data
 # ======================================================================
@@ -201,6 +227,7 @@ score_list <- list(
 )
 
 combined_data <- bind_rows(score_list)
+cell_type_plot_colors <- get_cell_type_colors(combined_data$name)
 
 cat("Basic information for combined_data:\n")
 print(table(combined_data$tissue_type, combined_data$treatment))
@@ -224,7 +251,7 @@ p_ribo_all <- ggplot(combined_data, aes(x = name, y = Ribosis, fill = name)) +
   geom_violin(alpha = 0.8, scale = "width", trim = TRUE, color = "black", linewidth = 0.3) +
   geom_boxplot(width = 0.15, alpha = 0.9, outlier.shape = NA,
                color = "black", linewidth = 0.5) +
-  scale_fill_brewer(palette = "Set3") +
+  scale_fill_manual(values = cell_type_plot_colors) +
   labs(
     title = "RiboSis Score Distribution by Cell Type",
     x = "Cell Type",
@@ -246,7 +273,7 @@ p_nus_all <- ggplot(combined_data, aes(x = name, y = NuS, fill = name)) +
   geom_violin(alpha = 0.8, scale = "width", trim = TRUE, color = "black", linewidth = 0.3) +
   geom_boxplot(width = 0.15, alpha = 0.9, outlier.shape = NA,
                color = "black", linewidth = 0.5) +
-  scale_fill_brewer(palette = "Set3") +
+  scale_fill_manual(values = cell_type_plot_colors) +
   labs(
     title = "NuS Score Distribution by Cell Type",
     x = "Cell Type",
