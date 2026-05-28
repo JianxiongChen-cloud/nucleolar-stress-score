@@ -74,10 +74,10 @@ print(group_info)
 ############################################################
 fill_na_by_group_mean <- function(expr_mat, group_info) {
   expr_df2 <- as.data.frame(expr_mat, check.names = FALSE)
-
+  
   for (grp in unique(group_info$Group)) {
     grp_samples <- group_info$Sample[group_info$Group == grp]
-
+    
     for (g in rownames(expr_df2)) {
       vals <- as.numeric(expr_df2[g, grp_samples, drop = TRUE])
       if (any(is.na(vals))) {
@@ -91,7 +91,7 @@ fill_na_by_group_mean <- function(expr_mat, group_info) {
       }
     }
   }
-
+  
   expr_out <- as.matrix(expr_df2)
   mode(expr_out) <- "numeric"
   return(expr_out)
@@ -199,15 +199,15 @@ if (has_core) {
   write.csv(data.frame(gene_symbol = core_up_in, stringsAsFactors = FALSE),
             file.path(out_dir, "NuStressCore_UP_overlap_with_matrix.csv"),
             row.names = FALSE)
-
+  
   write.csv(data.frame(gene_symbol = core_down_in, stringsAsFactors = FALSE),
             file.path(out_dir, "NuStressCore_DOWN_overlap_with_matrix.csv"),
             row.names = FALSE)
-
+  
   write.csv(data.frame(gene_symbol = setdiff(core_up, rownames(expr_mat)), stringsAsFactors = FALSE),
             file.path(out_dir, "NuStressCore_UP_not_in_matrix.csv"),
             row.names = FALSE)
-
+  
   write.csv(data.frame(gene_symbol = setdiff(core_down, rownames(expr_mat)), stringsAsFactors = FALSE),
             file.path(out_dir, "NuStressCore_DOWN_not_in_matrix.csv"),
             row.names = FALSE)
@@ -321,299 +321,71 @@ write.csv(scores_all,
           file.path(out_dir, "All_ssGSEA_scores.csv"),
           row.names = FALSE)
 
-############################################################
-## 11. Statistical analysis function
-## four-group one-way ANOVA + TukeyHSD
-############################################################
-run_group_stats <- function(df) {
-  df <- as.data.frame(df)
-  df$Group <- droplevels(factor(df$Group))
-  groups <- levels(df$Group)
-
-  summary_df <- df %>%
-    dplyr::group_by(Group) %>%
-    dplyr::summarise(
-      mean_score = mean(Score, na.rm = TRUE),
-      sd_score   = sd(Score, na.rm = TRUE),
-      n          = sum(!is.na(Score)),
-      .groups = "drop"
-    )
-
-  if (length(groups) < 2) {
-    return(data.frame(
-      comparison = NA_character_,
-      anova_p = NA_real_,
-      diff_mean = NA_real_,
-      lwr = NA_real_,
-      upr = NA_real_,
-      p_adj = NA_real_,
-      group_high = NA_character_,
-      group_low = NA_character_,
-      mean_high = NA_real_,
-      mean_low = NA_real_,
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  ## only two groups
-  if (length(groups) == 2) {
-    g1 <- groups[1]
-    g2 <- groups[2]
-
-    tt <- t.test(Score ~ Group, data = df, var.equal = FALSE)
-    m1 <- summary_df$mean_score[match(g1, summary_df$Group)]
-    m2 <- summary_df$mean_score[match(g2, summary_df$Group)]
-
-    return(data.frame(
-      comparison = paste(g2, "-", g1),
-      anova_p = NA_real_,
-      diff_mean = m2 - m1,
-      lwr = NA_real_,
-      upr = NA_real_,
-      p_adj = tt$p.value,
-      group_high = g2,
-      group_low = g1,
-      mean_high = m2,
-      mean_low = m1,
-      stringsAsFactors = FALSE
-    ))
-  }
-
-  ## one-way ANOVA
-  fit <- aov(Score ~ Group, data = df)
-  anova_p <- tryCatch(
-    summary(fit)[[1]][["Pr(>F)"]][1],
-    error = function(e) NA_real_
-  )
-
-  ## Tukey HSD pairwise comparison
-  tuk <- TukeyHSD(fit)$Group
-  tuk_df <- as.data.frame(tuk, stringsAsFactors = FALSE)
-  tuk_df$comparison <- rownames(tuk_df)
-  rownames(tuk_df) <- NULL
-
-  ## parse comparison name: A-B means mean(A) - mean(B)
-  comp_split <- strsplit(tuk_df$comparison, "-")
-  tuk_df$group_high <- sapply(comp_split, `[`, 1)
-  tuk_df$group_low  <- sapply(comp_split, `[`, 2)
-
-  tuk_df$mean_high <- summary_df$mean_score[match(tuk_df$group_high, summary_df$Group)]
-  tuk_df$mean_low  <- summary_df$mean_score[match(tuk_df$group_low, summary_df$Group)]
-
-  out <- data.frame(
-    comparison = tuk_df$comparison,
-    anova_p = anova_p,
-    diff_mean = tuk_df$diff,
-    lwr = tuk_df$lwr,
-    upr = tuk_df$upr,
-    p_adj = tuk_df$`p adj`,
-    group_high = tuk_df$group_high,
-    group_low = tuk_df$group_low,
-    mean_high = tuk_df$mean_high,
-    mean_low = tuk_df$mean_low,
-    stringsAsFactors = FALSE
-  )
-
-  return(out)
-}
-
-stats_all <- scores_all %>%
-  dplyr::group_by(ScoreType) %>%
-  dplyr::group_modify(~run_group_stats(.x)) %>%
-  dplyr::ungroup()
-
-write.csv(
-  stats_all,
-  file.path(out_dir, "All_ssGSEA_statistics.csv"),
-  row.names = FALSE
-)
 
 ############################################################
-## 12. Colors and plotting functions
+## 11. Colors and plotting functions
+## Boxplot + points only, no statistical analysis
 ############################################################
 base_fill_colors <- c(
-  "Control" = "#C4E7C1",
-  "OXA"     = "#93D4BC",
-  "L"       = "#51B3D1",
-  "L-OXA"   = "#08589E"
+  "Control" = "#4C72B0",
+  "OXA"     = "#6A8FD7",
+  "L"       = "#C44E52",
+  "L-OXA"   = "#8B1E3F"
 )
 
 make_group_colors <- function(groups) {
-  default_palette <- c("#C4E7C1", "#93D4BC", "#51B3D1", "#08589E",
-                       "#2171B5", "#6BAED6", "#9ECAE1", "#C6DBEF")
-  cols <- default_palette[seq_along(groups)]
-  names(cols) <- groups
-
-  overlap_names <- intersect(names(base_fill_colors), groups)
-  cols[overlap_names] <- base_fill_colors[overlap_names]
+  cols <- base_fill_colors[groups]
+  cols[is.na(cols)] <- "#999999"
   return(cols)
 }
 
-plot_violin <- function(df, score_type, out_dir) {
+plot_box_point <- function(df, score_type, out_dir) {
   plot_df <- df %>% dplyr::filter(ScoreType == score_type)
   fill_colors <- make_group_colors(levels(plot_df$Group))
-
+  
   p <- ggplot(plot_df, aes(x = Group, y = Score, fill = Group)) +
-    geom_violin(trim = FALSE, color = "black", linewidth = 0.8, alpha = 0.85) +
     geom_boxplot(
-      width = 0.15,
+      width = 0.42,
       outlier.shape = NA,
-      fill = "white",
       color = "black",
-      linewidth = 0.7
+      linewidth = 0.65,
+      alpha = 0.55
+    ) +
+    geom_jitter(
+      aes(color = Group),
+      width = 0.10,
+      size = 3.2,
+      shape = 16,
+      alpha = 0.95
     ) +
     scale_fill_manual(values = fill_colors) +
+    scale_color_manual(values = fill_colors) +
     labs(
       title = score_type,
       x = NULL,
       y = "ssGSEA score"
     ) +
-    theme_classic() +
+    theme_classic(base_size = 12) +
     theme(
       legend.position = "none",
       axis.text.x = element_text(angle = 30, hjust = 1, size = 11, face = "bold", color = "black"),
       axis.text.y = element_text(size = 10, color = "black"),
       axis.title.y = element_text(size = 12, face = "bold", color = "black"),
       plot.title = element_text(hjust = 0.5, size = 15, face = "bold", color = "black"),
+      axis.line = element_line(color = "black", linewidth = 0.6),
+      axis.ticks = element_line(color = "black", linewidth = 0.6),
       panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
       plot.margin = margin(15, 15, 15, 15)
     )
-
-  ggsave(file.path(out_dir, paste0(score_type, "_violinplot.pdf")),
-         p, width = 4.8, height = 4.2, bg = "white")
-  ggsave(file.path(out_dir, paste0(score_type, "_violinplot.png")),
-         p, width = 4.8, height = 4.2, dpi = 300, bg = "white")
-
+  
+  ggsave(file.path(out_dir, paste0(score_type, "_boxplot_points.pdf")),
+         p, width = 3, height = 4.2, bg = "white")
+  ggsave(file.path(out_dir, paste0(score_type, "_boxplot_points.png")),
+         p, width = 3, height = 4.2, dpi = 300, bg = "white")
+  
   return(p)
 }
+p1 <- plot_box_point(scores_all, "NuS_Full", out_dir)
+if (has_core) p2 <- plot_box_point(scores_all, "NuS_Core", out_dir)
+p3 <- plot_box_point(scores_all, "RiboSis", out_dir)
 
-p1 <- plot_violin(scores_all, "NuS_Full", out_dir)
-if (has_core) p2 <- plot_violin(scores_all, "NuS_Core", out_dir)
-p3 <- plot_violin(scores_all, "RiboSis", out_dir)
-
-############################################################
-## 13. Combined plot
-############################################################
-fill_colors_all <- make_group_colors(levels(scores_all$Group))
-
-p_all <- ggplot(scores_all, aes(x = Group, y = Score, fill = Group)) +
-  geom_violin(trim = FALSE, color = "black", linewidth = 0.8, alpha = 0.85) +
-  geom_boxplot(
-    width = 0.15,
-    outlier.shape = NA,
-    fill = "white",
-    color = "black",
-    linewidth = 0.7
-  ) +
-  facet_wrap(~ ScoreType, scales = "free_y", nrow = 1) +
-  scale_fill_manual(values = fill_colors_all) +
-  labs(
-    title = "NuS and RiboSis ssGSEA scores",
-    x = NULL,
-    y = "ssGSEA score"
-  ) +
-  theme_classic() +
-  theme(
-    legend.position = "none",
-    strip.background = element_rect(fill = "white", color = "black", linewidth = 0.8),
-    strip.text = element_text(size = 11, face = "bold", color = "black"),
-    axis.text.x = element_text(angle = 30, hjust = 1, size = 11, face = "bold", color = "black"),
-    axis.text.y = element_text(size = 10, color = "black"),
-    axis.title.y = element_text(size = 12, face = "bold", color = "black"),
-    plot.title = element_text(hjust = 0.5, size = 15, face = "bold", color = "black"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.8),
-    plot.margin = margin(15, 15, 15, 15)
-  )
-
-ggsave(file.path(out_dir, "Combined_ssGSEA_violinplot.pdf"),
-       p_all, width = 10, height = 4.5, bg = "white")
-ggsave(file.path(out_dir, "Combined_ssGSEA_violinplot.png"),
-       p_all, width = 10, height = 4.5, dpi = 300, bg = "white")
-
-############################################################
-## 14. Correlation analysis between NuS and RiboSis
-############################################################
-score_wide <- scores_all %>%
-  dplyr::select(Sample, Group, ScoreType, Score) %>%
-  tidyr::pivot_wider(names_from = ScoreType, values_from = Score)
-
-## Full vs RiboSis
-if (all(c("NuS_Full", "RiboSis") %in% colnames(score_wide))) {
-  cor_full <- cor.test(score_wide$NuS_Full, score_wide$RiboSis, method = "pearson")
-
-  p_cor_full <- ggplot(score_wide, aes(x = NuS_Full, y = RiboSis, color = Group)) +
-    geom_point(size = 3.5, alpha = 0.85) +
-    geom_smooth(method = "lm", se = TRUE) +
-    scale_color_manual(values = make_group_colors(levels(score_wide$Group))) +
-    labs(
-      title = paste0("NuS_Full vs RiboSis (r = ", round(cor_full$estimate, 3),
-                     ", p = ", signif(cor_full$p.value, 3), ")"),
-      x = "NuS_Full score",
-      y = "RiboSis score"
-    ) +
-    theme_classic() +
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-      axis.title = element_text(size = 12, face = "bold"),
-      legend.position = "right"
-    ) +
-    ggpubr::stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top")
-
-  ggsave(file.path(out_dir, "Correlation_NuS_Full_vs_RiboSis.pdf"),
-         p_cor_full, width = 6, height = 5, bg = "white")
-}
-
-## Core vs RiboSis
-if (has_core && all(c("NuS_Core", "RiboSis") %in% colnames(score_wide))) {
-  cor_core <- cor.test(score_wide$NuS_Core, score_wide$RiboSis, method = "pearson")
-
-  p_cor_core <- ggplot(score_wide, aes(x = NuS_Core, y = RiboSis, color = Group)) +
-    geom_point(size = 3.5, alpha = 0.85) +
-    geom_smooth(method = "lm", se = TRUE) +
-    scale_color_manual(values = make_group_colors(levels(score_wide$Group))) +
-    labs(
-      title = paste0("NuS_Core vs RiboSis (r = ", round(cor_core$estimate, 3),
-                     ", p = ", signif(cor_core$p.value, 3), ")"),
-      x = "NuS_Core score",
-      y = "RiboSis score"
-    ) +
-    theme_classic() +
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 14, face = "bold"),
-      axis.title = element_text(size = 12, face = "bold"),
-      legend.position = "right"
-    ) +
-    ggpubr::stat_cor(method = "pearson", label.x.npc = "left", label.y.npc = "top")
-
-  ggsave(file.path(out_dir, "Correlation_NuS_Core_vs_RiboSis.pdf"),
-         p_cor_core, width = 6, height = 5, bg = "white")
-}
-
-############################################################
-## 15. Save workspace
-############################################################
-if (has_core) {
-  save(
-    expr_mat,
-    group_info,
-    geneSets_full,
-    geneSets_core,
-    geneSets_ribosis,
-    scores_all,
-    stats_all,
-    file = file.path(out_dir, "NuS_RiboSis_ssGSEA_workspace.Rdata")
-  )
-} else {
-  save(
-    expr_mat,
-    group_info,
-    geneSets_full,
-    geneSets_ribosis,
-    scores_all,
-    stats_all,
-    file = file.path(out_dir, "NuS_RiboSis_ssGSEA_workspace.Rdata")
-  )
-}
-
-cat("\n===== Analysis completed =====\n")
-cat("Results saved in:\n", out_dir, "\n")

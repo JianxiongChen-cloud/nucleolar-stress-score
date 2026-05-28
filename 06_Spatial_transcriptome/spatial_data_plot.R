@@ -198,6 +198,43 @@ save_wilcox_summary <- function(df, group_var, score_var, split_var = NULL, outf
   return(res)
 }
 
+p_signif_from_p <- function(p) {
+  dplyr::case_when(
+    is.na(p)   ~ "NA",
+    p < 0.0001 ~ "****",
+    p < 0.001  ~ "***",
+    p < 0.01   ~ "**",
+    p < 0.05   ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+save_kruskal_summary <- function(df, group_var, score_var, outfile) {
+  sub <- df[, c(group_var, score_var), drop = FALSE]
+  sub <- sub[complete.cases(sub), , drop = FALSE]
+  group_counts <- table(sub[[group_var]])
+  kw <- tryCatch(
+    suppressWarnings(kruskal.test(sub[[score_var]] ~ sub[[group_var]])),
+    error = function(e) NULL
+  )
+
+  res <- data.frame(
+    score = score_var,
+    group = group_var,
+    test = "Kruskal-Wallis test",
+    n = nrow(sub),
+    n_groups = length(group_counts),
+    group_counts = paste(names(group_counts), as.integer(group_counts), sep = ":", collapse = ";"),
+    statistic = if (is.null(kw)) NA_real_ else unname(kw$statistic),
+    df = if (is.null(kw)) NA_real_ else unname(kw$parameter),
+    p_value = if (is.null(kw)) NA_real_ else kw$p.value
+  )
+  res$p.signif <- p_signif_from_p(res$p_value)
+
+  write.csv(res, outfile, row.names = FALSE)
+  return(res)
+}
+
 get_cell_type_colors <- function(cell_types) {
   cell_types <- unique(as.character(cell_types))
   missing_types <- setdiff(cell_types, names(cell_type_colors))
@@ -269,6 +306,13 @@ p_ribo_all <- ggplot(combined_data, aes(x = name, y = Ribosis, fill = name)) +
   )
 ggsave("RiboSis_all_celltypes.pdf", p_ribo_all, width = 6, height = 4)
 
+ribo_all_celltype_stats <- save_kruskal_summary(
+  df = combined_data,
+  group_var = "name",
+  score_var = "Ribosis",
+  outfile = "RiboSis_all_celltypes_kruskal_stats.csv"
+)
+
 p_nus_all <- ggplot(combined_data, aes(x = name, y = NuS, fill = name)) +
   geom_violin(alpha = 0.8, scale = "width", trim = TRUE, color = "black", linewidth = 0.3) +
   geom_boxplot(width = 0.15, alpha = 0.9, outlier.shape = NA,
@@ -290,6 +334,13 @@ p_nus_all <- ggplot(combined_data, aes(x = name, y = NuS, fill = name)) +
     axis.ticks = element_line(color = "black", linewidth = 0.5)
   )
 ggsave("NuS_all_celltypes.pdf", p_nus_all, width = 6, height = 4)
+
+nus_all_celltype_stats <- save_kruskal_summary(
+  df = combined_data,
+  group_var = "name",
+  score_var = "NuS",
+  outfile = "NuS_all_celltypes_kruskal_stats.csv"
+)
 
 
 
@@ -752,6 +803,41 @@ summary_info <- list(
 )
 
 save(summary_info, file = "Step5_summary_info.rda")
+
+pvalue_table_list <- data.frame(
+  Table = c(
+    "RiboSis_all_celltypes_kruskal_stats.csv",
+    "NuS_all_celltypes_kruskal_stats.csv",
+    "Tumor_RiboSis_treatment_stats.csv",
+    "Tumor_NuS_treatment_stats.csv",
+    "Untreated_Tumor_NuS_primary_vs_metastasis_stats.csv",
+    "Untreated_Tumor_RiboSis_primary_vs_metastasis_stats.csv",
+    "Treated_Tumor_NuS_primary_vs_metastasis_stats.csv",
+    "Treated_Tumor_RiboSis_primary_vs_metastasis_stats.csv"
+  ),
+  Plot = c(
+    "RiboSis_all_celltypes.pdf",
+    "NuS_all_celltypes.pdf",
+    "Tumor_RiboSis_treatment_by_tissue.pdf",
+    "Tumor_NuS_treatment_by_tissue.pdf",
+    "Untreated_Tumor_NuS_primary_vs_metastasis.pdf",
+    "Untreated_Tumor_RiboSis_primary_vs_metastasis.pdf",
+    "Treated_Tumor_NuS_primary_vs_metastasis.pdf",
+    "Treated_Tumor_RiboSis_primary_vs_metastasis.pdf"
+  ),
+  Test = c(
+    "Kruskal-Wallis test",
+    "Kruskal-Wallis test",
+    "Wilcoxon rank-sum test by tissue_type",
+    "Wilcoxon rank-sum test by tissue_type",
+    "Wilcoxon rank-sum test",
+    "Wilcoxon rank-sum test",
+    "Wilcoxon rank-sum test",
+    "Wilcoxon rank-sum test"
+  ),
+  stringsAsFactors = FALSE
+)
+write.csv(pvalue_table_list, "Spatial_plot_pvalue_table_file_list.csv", row.names = FALSE)
 
 cat("\n=============================\n")
 cat("Step5 analysis completed\n")

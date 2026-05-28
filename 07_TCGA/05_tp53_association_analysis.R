@@ -549,6 +549,23 @@ saveRDS(per_cancer_tp53_nus, file.path(rds_dir, "step5_per_cancer_tp53_nus_tests
 saveRDS(per_cancer_tp53_ribo, file.path(rds_dir, "step5_per_cancer_tp53_ribo_tests.rds"))
 saveRDS(corr_summary_tp53, file.path(rds_dir, "step5_corr_summary_tp53.rds"))
 
+step5_pvalue_table_list <- data.frame(
+  Table = c(
+    "overall_tp53_wt_vs_mut_wilcox.csv",
+    "per_cancer_tp53_wt_vs_mut_NuStress_z_wilcox.csv",
+    "per_cancer_tp53_wt_vs_mut_RiboSis_z_wilcox.csv",
+    "tp53_stratified_correlation_NuStress_vs_RiboSis.csv"
+  ),
+  Analysis = c(
+    "Overall TP53 WT vs Mut Wilcoxon tests for NuStress_z and RiboSis_z",
+    "Per-cancer TP53 WT vs Mut Wilcoxon tests for NuStress_z",
+    "Per-cancer TP53 WT vs Mut Wilcoxon tests for RiboSis_z",
+    "Spearman correlation between NuStress_z and RiboSis_z stratified by TP53 status"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(step5_pvalue_table_list, "step5_pvalue_table_file_list.csv")
+
 msg("Overall TP53 WT vs Mut:")
 print(overall_tp53_tests)
 

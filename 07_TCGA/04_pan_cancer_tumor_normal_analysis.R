@@ -826,6 +826,23 @@ saveRDS(per_cancer_ribo, file.path(rds_dir, "step4_per_cancer_ribo_tests.rds"))
 saveRDS(corr_summary, file.path(rds_dir, "step4_corr_summary.rds"))
 saveRDS(annot4_main, file.path(rds_dir, "step4_annot_main_tumor_normal_untreated.rds"))
 
+step4_pvalue_table_list <- data.frame(
+  Table = c(
+    "overall_tumor_normal_wilcox.csv",
+    "per_cancer_tumor_normal_NuStress_z_wilcox.csv",
+    "per_cancer_tumor_normal_RiboSis_z_wilcox.csv",
+    "overall_normal_vs_tumor_correlation_NuStress_vs_RiboSis.csv"
+  ),
+  Analysis = c(
+    "Overall tumor vs normal Wilcoxon tests for NuStress_z and RiboSis_z",
+    "Per-cancer tumor vs normal Wilcoxon tests for NuStress_z",
+    "Per-cancer tumor vs normal Wilcoxon tests for RiboSis_z",
+    "Spearman correlation between NuStress_z and RiboSis_z in normal and tumor samples"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(step4_pvalue_table_list, "step4_pvalue_table_file_list.csv")
+
 msg("Overall tumor vs normal:")
 print(overall_tests)
 

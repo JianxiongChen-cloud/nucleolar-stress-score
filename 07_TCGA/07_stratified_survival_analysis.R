@@ -703,6 +703,33 @@ all_sig_results <- all_surv_results %>%
 
 save_csv(all_sig_results, "step6_all_survival_results_significant_only.csv")
 
+step6_survival_pvalue_table_list <- data.frame(
+  Table = c(
+    "step6_tumor_correlation_NuStress_vs_RiboSis.csv",
+    "step6_joint_nufunc_survival_results_by_cancer.csv",
+    "step6_joint_nufunc_survival_results_significant_p_lt_0.05.csv",
+    "step6_single_RiboSis_survival_results_by_cancer.csv",
+    "step6_single_RiboSis_survival_results_significant_p_lt_0.05.csv",
+    "step6_single_NuS_survival_results_by_cancer.csv",
+    "step6_single_NuS_survival_results_significant_p_lt_0.05.csv",
+    "step6_all_survival_results_combined.csv",
+    "step6_all_survival_results_significant_only.csv"
+  ),
+  Analysis = c(
+    "Spearman correlation between NuStress_z and RiboSis_z in tumor samples",
+    "Per-cancer log-rank and Cox results for joint NuStress/RiboSis grouping",
+    "Significant per-cancer survival results for joint NuStress/RiboSis grouping",
+    "Per-cancer log-rank and Cox results for RiboSis-only grouping",
+    "Significant per-cancer survival results for RiboSis-only grouping",
+    "Per-cancer log-rank and Cox results for NuS-only grouping",
+    "Significant per-cancer survival results for NuS-only grouping",
+    "Combined survival p value table across all three models",
+    "Combined significant survival p value table across all three models"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(step6_survival_pvalue_table_list, "step6_survival_pvalue_table_file_list.csv")
+
 ###############################################################################
 ## Summary heatmap-like dotplot
 ###############################################################################

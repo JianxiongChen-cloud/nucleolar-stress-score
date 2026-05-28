@@ -780,3 +780,33 @@ if (!is.null(ekegg_down) && nrow(as.data.frame(ekegg_down)) > 0) {
   save_png(p_kegg_down, "tp53_mut_KEGG_down_dotplot.png", width = 8, height = 6)
 }
 
+step6_tp53_final_pvalue_table_list <- data.frame(
+  Table = c(
+    "tp53_stratified_overall_correlation_NuStress_vs_RiboSis.csv",
+    "tp53_mut_per_cancer_correlation_NuStress_vs_RiboSis.csv",
+    "tp53_mut_RiboSis_by_NuStress_group_wilcox.csv",
+    "lm_RiboSis_by_NuStress_TP53_cancer_main.csv",
+    "lm_RiboSis_by_NuStress_cancer_TP53mut_only.csv",
+    "lm_key_NuStress_effect_summary.csv",
+    "tp53_mut_DE_NuStressHigh_vs_Low_limma.csv",
+    "tp53_mut_GO_BP_up.csv",
+    "tp53_mut_GO_BP_down.csv",
+    "tp53_mut_KEGG_up.csv",
+    "tp53_mut_KEGG_down.csv"
+  ),
+  Analysis = c(
+    "Overall Spearman correlation between NuStress_z and RiboSis_z stratified by TP53 status",
+    "Per-cancer Spearman correlation between NuStress_z and RiboSis_z in TP53-mut tumors",
+    "Wilcoxon test of RiboSis_z between NuStress-low and NuStress-high TP53-mut tumors",
+    "Linear model coefficients for RiboSis_z by NuStress_z, TP53 status, and cancer type",
+    "Linear model coefficients for RiboSis_z by NuStress_z and cancer type in TP53-mut tumors",
+    "Key NuStress_z coefficient summary from linear models",
+    "limma differential expression results for NuStress-high vs NuStress-low TP53-mut tumors",
+    "GO BP enrichment for genes up in NuStress-high TP53-mut tumors",
+    "GO BP enrichment for genes down in NuStress-high TP53-mut tumors",
+    "KEGG enrichment for genes up in NuStress-high TP53-mut tumors",
+    "KEGG enrichment for genes down in NuStress-high TP53-mut tumors"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(step6_tp53_final_pvalue_table_list, "step6_tp53_final_pvalue_table_file_list.csv")

@@ -215,6 +215,144 @@ run_phase_specific_condition_test <- function(df, score_col = "NuStress",
   do.call(rbind, res)
 }
 
+p_signif_from_p <- function(p) {
+  dplyr::case_when(
+    is.na(p)   ~ "NA",
+    p < 0.0001 ~ "****",
+    p < 0.001  ~ "***",
+    p < 0.01   ~ "**",
+    p < 0.05   ~ "*",
+    TRUE       ~ "ns"
+  )
+}
+
+run_grouped_two_level_wilcox <- function(df, group_col, condition_col, score_col,
+                                         p_adjust_method = "BH") {
+  res <- df %>%
+    dplyr::filter(
+      !is.na(.data[[group_col]]),
+      !is.na(.data[[condition_col]]),
+      !is.na(.data[[score_col]])
+    ) %>%
+    dplyr::group_by(.data[[group_col]]) %>%
+    dplyr::group_modify(function(sub, key) {
+      cond_levels <- sort(unique(as.character(sub[[condition_col]])))
+      if (length(cond_levels) != 2) {
+        return(data.frame(
+          group1 = ifelse(length(cond_levels) >= 1, cond_levels[1], NA_character_),
+          group2 = ifelse(length(cond_levels) >= 2, cond_levels[2], NA_character_),
+          n_group1 = NA_integer_,
+          n_group2 = NA_integer_,
+          median_group1 = NA_real_,
+          median_group2 = NA_real_,
+          p_value = NA_real_
+        ))
+      }
+      
+      group1 <- cond_levels[1]
+      group2 <- cond_levels[2]
+      vals1 <- sub[[score_col]][as.character(sub[[condition_col]]) == group1]
+      vals2 <- sub[[score_col]][as.character(sub[[condition_col]]) == group2]
+      p_val <- tryCatch(
+        suppressWarnings(wilcox.test(vals1, vals2)$p.value),
+        error = function(e) NA_real_
+      )
+      
+      data.frame(
+        group1 = group1,
+        group2 = group2,
+        n_group1 = length(vals1),
+        n_group2 = length(vals2),
+        median_group1 = median(vals1, na.rm = TRUE),
+        median_group2 = median(vals2, na.rm = TRUE),
+        p_value = p_val
+      )
+    }) %>%
+    dplyr::ungroup() %>%
+    dplyr::rename(Group = dplyr::all_of(group_col)) %>%
+    dplyr::mutate(
+      Score = score_col,
+      Test = "Wilcoxon rank-sum test",
+      p_adj = p.adjust(p_value, method = p_adjust_method),
+      p.signif = p_signif_from_p(p_adj)
+    ) %>%
+    dplyr::select(
+      Score, Group, group1, group2, n_group1, n_group2,
+      median_group1, median_group2, Test, p_value, p_adj, p.signif
+    )
+  
+  res
+}
+
+run_grouped_analysis_wilcox <- function(df, group_cols, analysis_col = "Analysis",
+                                        score_col = "Score",
+                                        group1 = "Raw_NuStress",
+                                        group2 = "CellCycle_adjusted_NuStress",
+                                        p_adjust_method = "BH") {
+  df %>%
+    dplyr::filter(
+      !is.na(.data[[analysis_col]]),
+      !is.na(.data[[score_col]])
+    ) %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) %>%
+    dplyr::summarise(
+      n_group1 = sum(.data[[analysis_col]] == group1 & !is.na(.data[[score_col]])),
+      n_group2 = sum(.data[[analysis_col]] == group2 & !is.na(.data[[score_col]])),
+      median_group1 = median(.data[[score_col]][.data[[analysis_col]] == group1], na.rm = TRUE),
+      median_group2 = median(.data[[score_col]][.data[[analysis_col]] == group2], na.rm = TRUE),
+      p_value = tryCatch(
+        suppressWarnings(wilcox.test(
+          .data[[score_col]][.data[[analysis_col]] == group1],
+          .data[[score_col]][.data[[analysis_col]] == group2]
+        )$p.value),
+        error = function(e) NA_real_
+      ),
+      .groups = "drop"
+    ) %>%
+    dplyr::mutate(
+      Score = "NuStress",
+      group1 = group1,
+      group2 = group2,
+      Test = "Wilcoxon rank-sum test",
+      p_adj = p.adjust(p_value, method = p_adjust_method),
+      p.signif = p_signif_from_p(p_adj)
+    ) %>%
+    dplyr::select(
+      dplyr::all_of(group_cols), Score, group1, group2, n_group1, n_group2,
+      median_group1, median_group2, Test, p_value, p_adj, p.signif
+    )
+}
+
+run_kruskal_summary <- function(df, group_col, score_cols) {
+  res <- do.call(rbind, lapply(score_cols, function(score_col) {
+    sub <- df[, c(group_col, score_col), drop = FALSE]
+    sub <- sub[complete.cases(sub), , drop = FALSE]
+    group_counts <- table(sub[[group_col]])
+    kw <- tryCatch(
+      suppressWarnings(kruskal.test(sub[[score_col]] ~ sub[[group_col]])),
+      error = function(e) NULL
+    )
+    
+    data.frame(
+      Score = score_col,
+      Group = group_col,
+      Test = "Kruskal-Wallis test",
+      n = nrow(sub),
+      n_groups = length(group_counts),
+      group_counts = paste(names(group_counts), as.integer(group_counts), sep = ":", collapse = ";"),
+      statistic = if (is.null(kw)) NA_real_ else unname(kw$statistic),
+      df = if (is.null(kw)) NA_real_ else unname(kw$parameter),
+      p_value = if (is.null(kw)) NA_real_ else kw$p.value
+    )
+  }))
+  
+  res %>%
+    dplyr::mutate(
+      p_adj = p.adjust(p_value, method = "BH"),
+      p.signif = p_signif_from_p(p_adj)
+    )
+}
+
 plot_feature_umap <- function(obj, feature, title,
                               reduction_use = "umap",
                               pt_size = 3,
@@ -459,6 +597,23 @@ score_summary_whole <- seurat_obj@meta.data %>%
     RiboSis_se    = sd(RiboSis, na.rm = TRUE) / sqrt(sum(!is.na(RiboSis))),
     .groups = "drop"
   )
+save_csv(score_summary_whole, "wholedata_bar_mean_NuStress_RiboSis_by_celltype_summary.csv")
+
+whole_nus_nt_stats <- run_grouped_two_level_wilcox(
+  seurat_obj@meta.data,
+  group_col = "cluster",
+  condition_col = "specimen_type",
+  score_col = "NuStress"
+)
+save_csv(whole_nus_nt_stats, "wholedata_boxplot_NuStress_by_celltype_N_vs_T_wilcox.csv")
+
+whole_ribo_nt_stats <- run_grouped_two_level_wilcox(
+  seurat_obj@meta.data,
+  group_col = "cluster",
+  condition_col = "specimen_type",
+  score_col = "RiboSis"
+)
+save_csv(whole_ribo_nt_stats, "wholedata_boxplot_RiboSis_by_celltype_N_vs_T_wilcox.csv")
 
 p_bar_nus_whole <- ggplot(score_summary_whole,
                           aes(x = cluster, y = NuStress_mean, fill = specimen_type)) +
@@ -634,6 +789,22 @@ save_pdf(p_epi_ribo, "epi_umap_RiboSis", width = 5.5, height = 5)
 ## 11. Tumor vs normal epithelial comparison
 ###############################################################################
 cat("=== Step 8: Tumor vs normal epithelial comparison ===\n")
+
+epi_nus_nt_stats <- run_grouped_two_level_wilcox(
+  subset_epi@meta.data,
+  group_col = "epi_subcluster",
+  condition_col = "specimen_type",
+  score_col = "NuStress"
+)
+save_csv(epi_nus_nt_stats, "epi_boxplot_NuStress_N_vs_T_wilcox_by_subcluster.csv")
+
+epi_ribo_nt_stats <- run_grouped_two_level_wilcox(
+  subset_epi@meta.data,
+  group_col = "epi_subcluster",
+  condition_col = "specimen_type",
+  score_col = "RiboSis"
+)
+save_csv(epi_ribo_nt_stats, "epi_boxplot_RiboSis_N_vs_T_wilcox_by_subcluster.csv")
 
 p_box_epi_nus <- ggplot(
   subset_epi@meta.data,
@@ -827,13 +998,7 @@ phase_df <- subset_epi@meta.data %>%
   dplyr::select(NuStress, RiboSis, Phase, specimen_type, epi_subcluster, S.Score, G2M.Score) %>%
   filter(!is.na(NuStress), !is.na(RiboSis), !is.na(Phase))
 
-phase_kw_nus  <- kruskal.test(NuStress ~ Phase, data = phase_df)
-phase_kw_ribo <- kruskal.test(RiboSis ~ Phase, data = phase_df)
-
-phase_kw_res <- data.frame(
-  Score = c("NuStress", "RiboSis"),
-  p_value = c(phase_kw_nus$p.value, phase_kw_ribo$p.value)
-)
+phase_kw_res <- run_kruskal_summary(phase_df, "Phase", c("NuStress", "RiboSis"))
 save_csv(phase_kw_res, "cellcycle_kruskal_summary.csv")
 
 p_phase_box_nus <- ggplot(phase_df, aes(x = Phase, y = NuStress, fill = Phase)) +
@@ -1094,6 +1259,15 @@ nus_long_df <- nus_compare_df %>%
 
 save_csv(nus_long_df, "NuStress_before_after_cellcycle_regression_longformat.csv")
 
+before_after_stats_by_subcluster <- run_grouped_analysis_wilcox(
+  nus_long_df,
+  group_cols = c("epi_subcluster")
+)
+save_csv(
+  before_after_stats_by_subcluster,
+  "NuStress_before_after_cellcycle_regression_stats_by_subcluster.csv"
+)
+
 p_nus_before_after_box <- ggplot(
   nus_long_df,
   aes(x = epi_subcluster, y = Score, fill = Analysis)
@@ -1188,29 +1362,10 @@ save_pdf(
   height = 5.5
 )
 
-before_after_stats <- nus_long_df %>%
-  dplyr::group_by(epi_subcluster, specimen_type) %>%
-  dplyr::summarise(
-    p_value = tryCatch(
-      wilcox.test(
-        Score[Analysis == "Raw_NuStress"],
-        Score[Analysis == "CellCycle_adjusted_NuStress"]
-      )$p.value,
-      error = function(e) NA_real_
-    ),
-    .groups = "drop"
-  ) %>%
-  dplyr::mutate(
-    p_adj = p.adjust(p_value, method = "BH"),
-    p.signif = dplyr::case_when(
-      is.na(p_adj)   ~ "NA",
-      p_adj < 0.0001 ~ "****",
-      p_adj < 0.001  ~ "***",
-      p_adj < 0.01   ~ "**",
-      p_adj < 0.05   ~ "*",
-      TRUE           ~ "ns"
-    )
-  )
+before_after_stats <- run_grouped_analysis_wilcox(
+  nus_long_df,
+  group_cols = c("epi_subcluster", "specimen_type")
+)
 save_csv(
   before_after_stats,
   "NuStress_before_after_cellcycle_regression_stats_by_subcluster_and_specimen.csv"
@@ -1245,12 +1400,10 @@ p_tumor_ribo <- ggplot(
   theme(legend.position = "none")
 save_pdf(p_tumor_ribo, "tumor_epi_subclusters_RiboSis", width = 6, height = 5.5)
 
-tumor_nus_kw  <- kruskal.test(NuStress ~ epi_subcluster, data = subset_epi_tumor@meta.data)
-tumor_ribo_kw <- kruskal.test(RiboSis ~ epi_subcluster, data = subset_epi_tumor@meta.data)
-
-tumor_kw_res <- data.frame(
-  Score = c("NuStress", "RiboSis"),
-  p_value = c(tumor_nus_kw$p.value, tumor_ribo_kw$p.value)
+tumor_kw_res <- run_kruskal_summary(
+  subset_epi_tumor@meta.data,
+  "epi_subcluster",
+  c("NuStress", "RiboSis")
 )
 save_csv(tumor_kw_res, "tumor_epi_subcluster_kruskal_summary.csv")
 
@@ -1259,6 +1412,15 @@ save_csv(tumor_kw_res, "tumor_epi_subcluster_kruskal_summary.csv")
 ###############################################################################
 nus_long_tumor_df <- nus_long_df %>%
   dplyr::filter(specimen_type == "T")
+
+before_after_tumor_stats <- run_grouped_analysis_wilcox(
+  nus_long_tumor_df,
+  group_cols = c("epi_subcluster")
+)
+save_csv(
+  before_after_tumor_stats,
+  "tumor_epi_NuStress_before_after_cellcycle_regression_stats_by_subcluster.csv"
+)
 
 p_tumor_nus_before_after <- ggplot(
   nus_long_tumor_df,
@@ -1428,6 +1590,13 @@ p_quad_umap <- DimPlot(
 save_pdf(p_quad_umap, "epi_umap_quadrants_NuStress_RiboSis", width = 7, height = 5.5)
 
 ## (3) Boxplots to confirm quadrant separation
+quad_kw_res <- run_kruskal_summary(
+  subset_epi_quad@meta.data,
+  "NuS_Ribo_quadrant",
+  c("NuStress", "RiboSis")
+)
+save_csv(quad_kw_res, "epi_quadrant_boxplot_NuStress_RiboSis_kruskal_summary.csv")
+
 p_box_quad_nus <- ggplot(
   subset_epi_quad@meta.data,
   aes(x = NuS_Ribo_quadrant, y = NuStress, fill = NuS_Ribo_quadrant)
@@ -1949,5 +2118,36 @@ if (!is.null(p_go_hh)) {
 ## 17.9 Save quadrant objects
 ###############################################################################
 saveRDS(subset_epi_quad, file = file.path(rdsdir, "subset_epi_quadrant_grouped.rds"))
+
+boxplot_pvalue_table_list <- data.frame(
+  Table = c(
+    "wholedata_boxplot_NuStress_by_celltype_N_vs_T_wilcox.csv",
+    "wholedata_boxplot_RiboSis_by_celltype_N_vs_T_wilcox.csv",
+    "epi_boxplot_NuStress_N_vs_T_wilcox_by_subcluster.csv",
+    "epi_boxplot_RiboSis_N_vs_T_wilcox_by_subcluster.csv",
+    "cellcycle_kruskal_summary.csv",
+    "NuStress_phase_stratified_N_vs_T.csv",
+    "NuStress_before_after_cellcycle_regression_stats_by_subcluster.csv",
+    "NuStress_before_after_cellcycle_regression_stats_by_subcluster_and_specimen.csv",
+    "tumor_epi_subcluster_kruskal_summary.csv",
+    "tumor_epi_NuStress_before_after_cellcycle_regression_stats_by_subcluster.csv",
+    "epi_quadrant_boxplot_NuStress_RiboSis_kruskal_summary.csv"
+  ),
+  Plot = c(
+    "wholedata_boxplot_NuStress_by_celltype",
+    "wholedata_boxplot_RiboSis_by_celltype",
+    "epi_boxplot_NuStress_N_vs_T",
+    "epi_boxplot_RiboSis_N_vs_T",
+    "epi_boxplot_NuStress_by_cellcycle_phase; epi_boxplot_RiboSis_by_cellcycle_phase",
+    "boxplot_NuStress_phase_by_specimenType",
+    "epi_boxplot_NuStress_before_after_cellcycle_regression",
+    "epi_boxplot_NuStress_before_after_cellcycle_regression_by_specimen",
+    "tumor_epi_subclusters_NuStress; tumor_epi_subclusters_RiboSis",
+    "tumor_epi_subclusters_NuStress_before_after_cellcycle_regression",
+    "epi_boxplot_NuStress_by_quadrant; epi_boxplot_RiboSis_by_quadrant"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(boxplot_pvalue_table_list, "Boxplot_pvalue_table_file_list.csv")
 
 cat("=== Quadrant-based DEG and pathway analysis completed successfully ===\n")

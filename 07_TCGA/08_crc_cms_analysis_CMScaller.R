@@ -556,6 +556,23 @@ summary_df <- data.frame(
 
 save_csv(summary_df, "step7_summary_metrics_CMScaller.csv")
 
+step7_cmscaller_pvalue_table_list <- data.frame(
+  Table = c(
+    "step7_kw_CMScaller_vs_NuStress_RiboSis.csv",
+    "step7_pairwise_wilcox_NuStress_by_CMScaller.csv",
+    "step7_pairwise_wilcox_RiboSis_by_CMScaller.csv",
+    "step7_CMScaller_specific_correlation_summary.csv"
+  ),
+  Analysis = c(
+    "Kruskal-Wallis tests for NuStress_z and RiboSis_z across CMScaller CMS groups",
+    "Pairwise Wilcoxon tests for NuStress_z across CMScaller CMS groups",
+    "Pairwise Wilcoxon tests for RiboSis_z across CMScaller CMS groups",
+    "CMS-specific Spearman correlations between NuStress_z and RiboSis_z"
+  ),
+  stringsAsFactors = FALSE
+)
+save_csv(step7_cmscaller_pvalue_table_list, "step7_CMScaller_pvalue_table_file_list.csv")
+
 msg("CMScaller analysis finished.")
 print(kw_summary)
 print(cms_corr_summary)
